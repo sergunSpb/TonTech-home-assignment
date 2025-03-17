@@ -1,0 +1,9 @@
+const error::buyer_already_exists = 101;
+const error::buyer_absent = 102;
+const error::insufficient_amount = 103;
+const error::wrong_guarantor = 104;
+
+const op::deposit = 0;
+const op::confirm_deal = 1;
+const op::reject_deal = 2;
+const op::refund = 3;
