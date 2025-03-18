@@ -5,6 +5,10 @@ import '@ton/test-utils';
 import { compile } from '@ton/blueprint';
 import { Opcodes } from '../wrappers/constants';
 
+const PRICE = toNano(100000);
+const ROYALTIEE = 250;
+const FEE = (PRICE * BigInt(ROYALTIEE)) / 10000n;
+
 describe('TestTask', () => {
     let code: Cell;
 
@@ -16,7 +20,6 @@ describe('TestTask', () => {
     let deployer: SandboxContract<TreasuryContract>;
     let testTask: SandboxContract<TestTask>;
     let guarantor: SandboxContract<TreasuryContract>;
-    let price: bigint = toNano(100000);
 
     beforeEach(async () => {
         blockchain = await Blockchain.create();
@@ -25,13 +28,12 @@ describe('TestTask', () => {
         deployer = await blockchain.treasury('deployer');
 
         testTask = blockchain.openContract(TestTask.createFromConfig({
-            price :price,
-            royaltee: 2,
+            price : PRICE,
+            royaltee: ROYALTIEE,
             guarantor : guarantor.address,
             seller: deployer.address
         }, code));
 
-        
 
         const deployResult = await testTask.sendDeploy(deployer.getSender(), toNano('0.05'));
 
@@ -44,40 +46,63 @@ describe('TestTask', () => {
     });
 
     it('should deploy', async () => {
-        // the check is done inside beforeEach
-        // blockchain and testTask are ready to use
+        let storage = await testTask.getStorage();
+        expect(storage.seller).toEqual(deployer.address);
+
+        console.log(await testTask.getStorage())
     });
 
     it('should deposit TON', async () => {
-        blockchain.now = 1800000000;
         let buyer = await blockchain.treasury('buyer');
 
         const depositResult = await testTask.sendMessage(buyer.getSender(), {
             op: Opcodes.deposit,
-            value: price
-        })
+            value: PRICE
+        });
 
         expect(depositResult.transactions).toHaveTransaction({
             from: buyer.address,
             to: testTask.address,
             success: true,
-            value: price
-        })
+            value: PRICE
+        });       
+    });
+
+    it('confirm transaction', async () => {
+        let buyer = await blockchain.treasury('buyer');
+
+        const depositResult = await testTask.sendMessage(guarantor.getSender(), {
+            op: Opcodes.confirm_deal,
+            value: toNano(0),
+        });
+
+        expect(depositResult.transactions).toHaveTransaction({
+            from: testTask.address,
+            to: deployer.address,
+            success: true,
+            value: PRICE
+        });
+
+        expect(depositResult.transactions).toHaveTransaction({
+            from: testTask.address,
+            to: guarantor.address,
+            success: true,
+            value: FEE
+        });
     });
 
     it('unknown OP', async () => {
-        blockchain.now = 1800000000;
         let buyer = await blockchain.treasury('buyer');
 
         const depositResult = await testTask.sendMessage(buyer.getSender(), {
             op: Opcodes.unknown,
-            value: price
-        })
+            value: PRICE
+        });
 
         expect(depositResult.transactions).toHaveTransaction({
             from: buyer.address,
             to: testTask.address,
             exitCode: 105,
-        })
+        });
     });
 });

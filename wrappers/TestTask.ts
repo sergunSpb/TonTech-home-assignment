@@ -9,7 +9,14 @@ export type TestTaskConfig = {
 };
 
 export function testTaskConfigToCell(config: TestTaskConfig): Cell {
-    return beginCell().storeAddress(config.seller).storeUint(0, 2).storeUint(0, 2).storeCoins(config.price).storeUint(config.royaltee,10).storeBit(false).endCell();
+    return beginCell().
+        storeAddress(config.seller).
+        storeAddress(null).
+        storeAddress(config.guarantor).
+        storeCoins(config.price).
+        storeUint(config.royaltee,10).
+        storeBit(false).
+        endCell();
 }
 
 export class TestTask implements Contract {
@@ -49,7 +56,20 @@ export class TestTask implements Contract {
     async deposit(provider: ContractProvider, via: Sender, value: bigint) {
         await this.sendMessage(provider,via,{
             value: value,
-            op: Opcodes.unknown
+            op: Opcodes.deposit
         })
+    }
+
+    async getStorage(provider: ContractProvider) {
+        const result = (await provider.get('get_storage_data', [])).stack;
+        
+        return {
+            seller: result.readAddress(),
+            buyer: result.readAddressOpt(),
+            guarantor: result.readAddress(),
+            price: result.readBigNumber(),
+            guarantorRoyalties: result.readNumber(),
+            assetTransfered: result.readNumber()
+        }
     }
 }

@@ -34,16 +34,19 @@ int equal_slices (slice a, slice b) asm "SDEQ";
     );
 }
 
-() send_message_helper (slice to, int amount, builder body, int mode) impure inline_ref {
+() send_ton(slice recipient, int amount) impure {
+    throw_if(error::wrong_amount, amount <= 0);
+
     cell msg = begin_cell()
-        .store_uint(0x10, 6)
-        .store_slice(to)
-        .store_coins(amount)
-        .store_uint(1, 107)
-        .store_ref(body.end_cell())
-    .end_cell();
-    send_raw_message(msg, mode);
+        .store_uint(0x10, 6)  
+        .store_slice(recipient) 
+        .store_coins(amount)  
+        .store_uint(0, 1)  
+        .end_cell();
+
+    send_raw_message(msg, 0);
 }
+
 
 () recv_internal(int my_balance, int msg_value, cell in_msg_full, slice in_msg_body) impure {
     slice cs = in_msg_full.begin_parse();
@@ -57,16 +60,16 @@ int equal_slices (slice a, slice b) asm "SDEQ";
 
     var is_not_initialized = storage::seller.slice_empty?(); ;; not initialized
     if (is_not_initialized){
-        return ();
+         throw(error::not_initialized);
     }
     
     int op = in_msg_body~load_int(32);
-
      if (op == op::deposit) {
-        throw_if(error::buyer_already_exists, storage::buyer.slice_empty?());
+        throw_if(error::deal_finished, storage::asset_transfered == 1);
+        throw_unless(error::buyer_already_exists, storage::buyer.slice_empty?());
 
         ;; Check if buyer sent enough funds
-        throw_if(error::insufficient_amount, (msg_value < storage::price) ? 1 : 0);
+        throw_if(error::wrong_amount, (msg_value != storage::price) ? 1 : 0);
         storage::buyer = sender;
         save_data();
 
@@ -78,21 +81,34 @@ int equal_slices (slice a, slice b) asm "SDEQ";
         throw_unless(error::wrong_guarantor, equal_slices(sender, storage::guarantor));
 
         int guarantor_fee = muldiv(storage::price, storage::royaltee, 10000);
-        send_message_helper(storage::seller, storage::price - guarantor_fee, begin_cell(), 1);
+        send_ton(storage::seller, storage::price - guarantor_fee);
         if (guarantor_fee) {
-            send_message_helper(storage::guarantor, guarantor_fee, begin_cell(), 1);
+            send_ton(storage::guarantor, guarantor_fee);
         }
 
-        ;; TODO: to check and correct send of message
-
         storage::asset_transfered = 1;
+        save_data();
+
+        return ();
+    } elseif (op == op::reject_deal) {
+        throw_if(error::buyer_absent, storage::buyer.slice_empty?());
+        throw_if(error::deal_finished, storage::asset_transfered == 1);
+
+        ;; Check if sender == guarantor
+        throw_unless(error::wrong_guarantor, equal_slices(sender, storage::guarantor));
+
+        send_ton(storage::buyer, storage::price);
+        storage::buyer = begin_cell().end_cell().begin_parse();
+    
         save_data();
 
         return ();
      } else {
         throw(error::unknown_op);
      }
-
-     ;; TODO: reject deal
 }
 
+(slice, slice, slice, int, int, int) get_storage_data() method_id {
+    load_data();
+    return (storage::seller,storage::buyer,storage::guarantor,storage::price,storage::royaltee,storage::asset_transfered);
+}

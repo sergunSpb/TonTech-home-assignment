@@ -1,8 +1,10 @@
 const error::buyer_already_exists = 101;
 const error::buyer_absent = 102;
-const error::insufficient_amount = 103;
 const error::wrong_guarantor = 104;
 const error::unknown_op = 105;
+const error::wrong_amount = 106;
+const error::deal_finished = 107;
+const error::not_initialized = 108;
 
 const op::deposit = 1;
 const op::confirm_deal = 2;
